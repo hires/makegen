@@ -30,23 +30,31 @@
 
 // defaults
 #define BUILD_DIR_DEF "build"
-#define COMPILER_EXEC_DEF "cc"
-#define C_EXT_MAX 3
+#define C_COMPILER_EXEC_DEF "gcc"
+#define CPP_COMPILER_EXEC_DEF "g++"
+#define C_EXT_MAX 1
 const char *c_ext[] = {
-    "c", "cpp", "c++"
+    "c"
+};
+#define CPP_EXT_MAX 2
+const char *cpp_ext[] = {
+    "cpp", "c++"
 };
 #define LINKER_EXEC_DEF "ld"
 #define ASSEMBLER_EXEC_DEF "as"
 
 // settings
+#define MAX_STRLEN 65536
 #define SEPARATOR "/"
 char *ldflags;
 char *build_dir;
-char *compiler_exec;
+char *c_compiler_exec;
+char *cpp_compiler_exec;
 char *linker_exec;
 char *assembler_exec;
 char *include_paths;
-char *compiler_flags;
+char *c_compiler_flags;
+char *cpp_compiler_flags;
 char *run_command;
 char *exec_name;
 char *exclude_file;
@@ -70,14 +78,18 @@ int main(int argc, char **argv) {
     // defaults
     ldflags = malloc(sizeof(char) * 1);
     strcpy(ldflags, "");
-    compiler_flags = malloc(sizeof(char) * 1);
-    strcpy(compiler_flags, "");
+    c_compiler_flags = malloc(sizeof(char) * 1);
+    strcpy(c_compiler_flags, "");
+    cpp_compiler_flags = malloc(sizeof(char) * 1);
+    strcpy(cpp_compiler_flags, "");
     include_paths = malloc(sizeof(char) * 1);
     strcpy(include_paths, "");    
     build_dir = malloc(sizeof(char) * (strlen(BUILD_DIR_DEF) + 1));
     strcpy(build_dir, BUILD_DIR_DEF);
-    compiler_exec = malloc(sizeof(char) * (strlen(COMPILER_EXEC_DEF) + 1));
-    strcpy(compiler_exec, COMPILER_EXEC_DEF);
+    c_compiler_exec = malloc(sizeof(char) * (strlen(C_COMPILER_EXEC_DEF) + 1));
+    strcpy(c_compiler_exec, C_COMPILER_EXEC_DEF);
+    cpp_compiler_exec = malloc(sizeof(char) * (strlen(CPP_COMPILER_EXEC_DEF) + 1));
+    strcpy(cpp_compiler_exec, CPP_COMPILER_EXEC_DEF);
     linker_exec = malloc(sizeof(char) * (strlen(LINKER_EXEC_DEF) + 1));
     strcpy(linker_exec, LINKER_EXEC_DEF);
     assembler_exec = malloc(sizeof(char) * (strlen(ASSEMBLER_EXEC_DEF) + 1));
@@ -94,7 +106,7 @@ int main(int argc, char **argv) {
     // command line args
     //
     // parse the command line arguments
-    while((opt = getopt(argc, argv, "h?l:b:c:d:a:i:f:r:e:p:")) != -1) {
+    while((opt = getopt(argc, argv, "h?l:b:c:C:d:a:i:f:F:r:e:p:")) != -1) {
         switch(opt) {
             case 'l':  // ldflags
                 ldflags = malloc(sizeof(char) * (strlen(optarg) + 1));
@@ -104,9 +116,13 @@ int main(int argc, char **argv) {
                 build_dir = malloc(sizeof(char) * (strlen(optarg) + 1));
                 strcpy(build_dir, optarg);
                 break;
-            case 'c':  // compiler executable
-                compiler_exec = malloc(sizeof(char) * (strlen(optarg) + 1));
-                strcpy(compiler_exec, optarg);
+            case 'c':  // C compiler executable
+                c_compiler_exec = malloc(sizeof(char) * (strlen(optarg) + 1));
+                strcpy(c_compiler_exec, optarg);
+                break;
+            case 'C':  // C++ compiler executable
+                cpp_compiler_exec = malloc(sizeof(char) * (strlen(optarg) + 1));
+                strcpy(cpp_compiler_exec, optarg);
                 break;
             case 'd':  // linker executable                
                 linker_exec = malloc(sizeof(char) * (strlen(optarg) + 1));
@@ -120,9 +136,13 @@ int main(int argc, char **argv) {
                 include_paths = malloc(sizeof(char) * (strlen(optarg) + 1));
                 strcpy(include_paths, optarg);                
                 break;
-            case 'f':  // compiler flags
-                compiler_flags = malloc(sizeof(char) * (strlen(optarg) + 1));
-                strcpy(compiler_flags, optarg);
+            case 'f':  // C compiler flags
+                c_compiler_flags = malloc(sizeof(char) * (strlen(optarg) + 1));
+                strcpy(c_compiler_flags, optarg);
+                break;
+            case 'F':  // C++ compiler flags
+                cpp_compiler_flags = malloc(sizeof(char) * (strlen(optarg) + 1));
+                strcpy(cpp_compiler_flags, optarg);
                 break;
             case 'r':  // run command
                 run_command = malloc(sizeof(char) * (strlen(optarg) + 1));
@@ -164,8 +184,10 @@ int main(int argc, char **argv) {
     fprintf(stderr, "makegen - by: Andrew Kilpatrick\n");
     fprintf(stderr, "  ldflags: %s\n", ldflags);
     fprintf(stderr, "  build directory: %s\n", build_dir);
-    fprintf(stderr, "  compiler executable: %s\n", compiler_exec);
-    fprintf(stderr, "  compiler flags: %s\n", compiler_flags);
+    fprintf(stderr, "  C compiler executable: %s\n", c_compiler_exec);
+    fprintf(stderr, "  C++ compiler executable: %s\n", cpp_compiler_exec);
+    fprintf(stderr, "  C compiler flags: %s\n", c_compiler_flags);
+    fprintf(stderr, "  C++ compiler flags: %s\n", cpp_compiler_flags);
     fprintf(stderr, "  linker executable: %s\n", linker_exec);
     fprintf(stderr, "  assembler executable: %s\n", assembler_exec);
     fprintf(stderr, "  executable name: %s\n", exec_name);
@@ -199,11 +221,15 @@ int main(int argc, char **argv) {
     
     // print build target variables
     printf("# build target specs\n");
-    printf("CC = %s\n", compiler_exec);
+    printf("CC = %s\n", c_compiler_exec);
+    printf("CPP = %s\n", cpp_compiler_exec);
     printf("LD = %s\n", linker_exec);
     printf("AS = %s\n", assembler_exec);
-    if(strlen(compiler_flags) > 0) {
-        printf("CFLAGS = %s\n", compiler_flags);
+    if(strlen(c_compiler_flags) > 0) {
+        printf("CFLAGS = %s\n", c_compiler_flags);
+    }
+    if(strlen(cpp_compiler_flags) > 0) {
+        printf("CPPFLAGS = %s\n", cpp_compiler_flags);
     }
     if(strlen(include_paths) > 0) {
         printf("INCLUDES = %s\n", include_paths);
@@ -314,7 +340,14 @@ void print_bin_deps(char *dirname) {
             else {        
                 for(i = 0; i < C_EXT_MAX; i ++) {
                     if(!strcmp(get_filename_ext(fullpath), c_ext[i])) {
-                        fprintf(stderr, "processing file for link: %s\n", fullpath);
+                        fprintf(stderr, "processing C file for link: %s\n", fullpath);
+                        printf("$(OUT_DIR)/%s.o ", de->d_name);
+                        break;
+                    }
+                }
+                for(i = 0; i < CPP_EXT_MAX; i ++) {
+                    if(!strcmp(get_filename_ext(fullpath), cpp_ext[i])) {
+                        fprintf(stderr, "processing C++ file for link: %s\n", fullpath);
                         printf("$(OUT_DIR)/%s.o ", de->d_name);
                         break;
                     }
@@ -322,7 +355,7 @@ void print_bin_deps(char *dirname) {
             }
         }        
     }
-    
+    closedir(dir);
     if(fullpath != NULL) {
         free(fullpath);
     }
@@ -335,7 +368,7 @@ void print_source_targets(char *dirname) {
     struct dirent *de;
     struct stat s;
     char *fullpath = NULL;
-    char tempstr[1024];
+    char tempstr[MAX_STRLEN];
     int i;
     int exclude_f;
 
@@ -390,16 +423,34 @@ void print_source_targets(char *dirname) {
             }
             // see if the file matches one of the C types
             else {
+                // C
                 for(i = 0; i < C_EXT_MAX; i ++) {
                     if(!strcmp(get_filename_ext(fullpath), c_ext[i])) {
-                        fprintf(stderr, "processing file for compile: %s:\n", fullpath);
+                        fprintf(stderr, "processing C file for compile: %s:\n", fullpath);
                         printf("# source file: %s\n", fullpath);
                         fflush(stdout);
                         sprintf(tempstr, "%s %s %s -MM -MT '$(OUT_DIR)'/%s.o %s 2>&1",
-                            compiler_exec, include_paths, compiler_flags, de->d_name, fullpath);
+                            c_compiler_exec, include_paths, c_compiler_flags, de->d_name, fullpath);
                         system(tempstr);
                         printf("\t@echo 'compiling %s...'\n", de->d_name);
                         printf("\t$(CC) $(CFLAGS) $(INCLUDES) -o $(OUT_DIR)/%s.o -c %s\n", 
+                            de->d_name, fullpath);
+                        printf("\t@echo done.\n");
+                        printf("\n");
+                        break;
+                    }
+                }
+                // C++
+                for(i = 0; i < CPP_EXT_MAX; i ++) {
+                    if(!strcmp(get_filename_ext(fullpath), cpp_ext[i])) {
+                        fprintf(stderr, "processing C++ file for compile: %s:\n", fullpath);
+                        printf("# source file: %s\n", fullpath);
+                        fflush(stdout);
+                        sprintf(tempstr, "%s %s %s -MM -MT '$(OUT_DIR)'/%s.o %s 2>&1",
+                            cpp_compiler_exec, include_paths, cpp_compiler_flags, de->d_name, fullpath);
+                        system(tempstr);
+                        printf("\t@echo 'compiling %s...'\n", de->d_name);
+                        printf("\t$(CPP) $(CPPFLAGS) $(INCLUDES) -o $(OUT_DIR)/%s.o -c %s\n", 
                             de->d_name, fullpath);
                         printf("\t@echo done.\n");
                         printf("\n");
@@ -419,8 +470,8 @@ void print_source_targets(char *dirname) {
 void load_excludes(void) {
     FILE *fp;
     fprintf(stderr, "loading excludes:\n");
-    char tempstr[1024];
-    char tempstr2[1024];
+    char tempstr[MAX_STRLEN];
+    char tempstr2[MAX_STRLEN];
     
     fp = fopen(exclude_file, "r");
     if(fp == NULL) {
@@ -445,7 +496,7 @@ void load_excludes(void) {
             strcpy(tempstr2, "./");
             strcat(tempstr2, tempstr);
         }
-        excludes[num_excludes] = malloc(sizeof(char) * strlen(tempstr2));
+        excludes[num_excludes] = malloc(sizeof(char) * (strlen(tempstr2) + 1));
         strcpy(excludes[num_excludes], tempstr2);
         num_excludes ++;
     }
@@ -460,11 +511,13 @@ void print_usage(void) {
     printf("options:\n");
     printf("  -l    ldflags\n");
     printf("  -b    build directory\n");
-    printf("  -c    compiler executable\n");
+    printf("  -c    C compiler executable\n");
+    printf("  -C    C++ compiler executable\n");
     printf("  -d    linker executable\n");
     printf("  -a    assembler executable\n");
     printf("  -i    compiler include paths\n");
-    printf("  -f    compiler flags\n");
+    printf("  -f    C compiler flags\n");
+    printf("  -F    C++ compiler flags\n");
     printf("  -r    run (or flash) command\n");
     printf("  -e    exclude file containing files to exclude from compilation\n");
     printf("  -p    post link command\n");
