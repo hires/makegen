@@ -69,12 +69,15 @@ void print_source_targets(char *dirname);
 void print_usage(void);
 const char *get_filename_ext(const char *filename);
 void load_excludes(void);
+char *get_derived_o_filename(char *dirname, char *filename);
+int is_build_dir(char *dirname);
+char *strip_leading_ds(char *filename);
 
 // main
 int main(int argc, char **argv) {
     int opt;
     int i;
-    
+
     // defaults
     ldflags = malloc(sizeof(char) * 1);
     strcpy(ldflags, "");
@@ -83,7 +86,7 @@ int main(int argc, char **argv) {
     cpp_compiler_flags = malloc(sizeof(char) * 1);
     strcpy(cpp_compiler_flags, "");
     include_paths = malloc(sizeof(char) * 1);
-    strcpy(include_paths, "");    
+    strcpy(include_paths, "");
     build_dir = malloc(sizeof(char) * (strlen(BUILD_DIR_DEF) + 1));
     strcpy(build_dir, BUILD_DIR_DEF);
     c_compiler_exec = malloc(sizeof(char) * (strlen(C_COMPILER_EXEC_DEF) + 1));
@@ -93,7 +96,7 @@ int main(int argc, char **argv) {
     linker_exec = malloc(sizeof(char) * (strlen(LINKER_EXEC_DEF) + 1));
     strcpy(linker_exec, LINKER_EXEC_DEF);
     assembler_exec = malloc(sizeof(char) * (strlen(ASSEMBLER_EXEC_DEF) + 1));
-    strcpy(assembler_exec, ASSEMBLER_EXEC_DEF);    
+    strcpy(assembler_exec, ASSEMBLER_EXEC_DEF);
     post_link = malloc(sizeof(char) * 1);
     strcpy(post_link, "");
     run_command = NULL;
@@ -101,7 +104,7 @@ int main(int argc, char **argv) {
     for(i = 0; i < MAX_EXCLUDES; i ++) {
         excludes[i] = NULL;
     }
-    
+
     //
     // command line args
     //
@@ -124,7 +127,7 @@ int main(int argc, char **argv) {
                 cpp_compiler_exec = malloc(sizeof(char) * (strlen(optarg) + 1));
                 strcpy(cpp_compiler_exec, optarg);
                 break;
-            case 'd':  // linker executable                
+            case 'd':  // linker executable
                 linker_exec = malloc(sizeof(char) * (strlen(optarg) + 1));
                 strcpy(linker_exec, optarg);
                 break;
@@ -134,7 +137,7 @@ int main(int argc, char **argv) {
                 break;
             case 'i':  // compiler include paths
                 include_paths = malloc(sizeof(char) * (strlen(optarg) + 1));
-                strcpy(include_paths, optarg);                
+                strcpy(include_paths, optarg);
                 break;
             case 'f':  // C compiler flags
                 c_compiler_flags = malloc(sizeof(char) * (strlen(optarg) + 1));
@@ -146,15 +149,15 @@ int main(int argc, char **argv) {
                 break;
             case 'r':  // run command
                 run_command = malloc(sizeof(char) * (strlen(optarg) + 1));
-                strcpy(run_command, optarg);            
+                strcpy(run_command, optarg);
                 break;
             case 'e':  // exclude file
                 exclude_file = malloc(sizeof(char) * (strlen(optarg) + 1));
-                strcpy(exclude_file, optarg); 
+                strcpy(exclude_file, optarg);
                 break;
             case 'p':  // post link command
                 post_link = malloc(sizeof(char) * (strlen(optarg) + 1));
-                strcpy(post_link, optarg);             
+                strcpy(post_link, optarg);
                 break;
             case 'h':  // help - same as default
             case '?':  // help - same as default
@@ -173,7 +176,7 @@ int main(int argc, char **argv) {
     }
     exec_name = malloc(sizeof(char) * (strlen(argv[optind]) + 1));
     strcpy(exec_name, argv[optind]);
-    
+
     if(run_command == NULL) {
         run_command = malloc(sizeof(char) * (strlen(exec_name) + 2 + 1));
         strcpy(run_command, "./");
@@ -205,7 +208,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "  %s\n", excludes[i]);
         }
     }
-    
+
     fprintf(stderr, "generating makefile...\n");
 
     //
@@ -218,7 +221,7 @@ int main(int argc, char **argv) {
     printf("# type 'make clean' to delete temp files\n");
     printf("# type 'make run' to run program\n");
     printf("#\n");
-    
+
     // print build target variables
     printf("# build target specs\n");
     printf("CC = %s\n", c_compiler_exec);
@@ -244,7 +247,7 @@ int main(int argc, char **argv) {
     printf("# first target to run when typing 'make'\n");
     printf("default: %s\n", exec_name);
     printf("\n");
-    
+
     // print binary deps
     printf("# binary dependencies\n");
     printf("%s: ", exec_name);
@@ -270,12 +273,12 @@ int main(int argc, char **argv) {
     printf("run:\n");
     printf("\t%s\n", run_command);
     printf("\n");
-    
+
     // print the clean target
     printf("# clean target\n");
     printf("clean:\n");
     printf("\t@echo 'removing temporary files...'\n");
-    printf("\trm -f %s %s.bin %s.elf %s.map %s.hex $(OUT_DIR)/*.o\n", 
+    printf("\trm -f %s %s.bin %s.elf %s.map %s.hex $(OUT_DIR)/*.o\n",
         exec_name, exec_name, exec_name, exec_name, exec_name);
     printf("\t@echo done.\n");
     printf("\n");
@@ -290,6 +293,7 @@ void print_bin_deps(char *dirname) {
     FILE *fp;
     struct dirent *de;
     struct stat s;
+    char *derived_ofile;
     char *fullpath = NULL;
     int i;
     int exclude_f = 0;
@@ -306,11 +310,15 @@ void print_bin_deps(char *dirname) {
         // get a stat on the path
         if(stat(fullpath, &s) != 0) {
             continue;
-        }        
+        }
         // directory
         if(s.st_mode & S_IFDIR) {
             // ignore . and ..
             if(!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) {
+                continue;
+            }
+            // ignore the build dir
+            if(is_build_dir(de->d_name)) {
                 continue;
             }
             // recurse into directory
@@ -330,30 +338,35 @@ void print_bin_deps(char *dirname) {
                 fprintf(stderr, "excluding file for link: %s\n", fullpath);
                 continue;
             }
-        
+
+            // derive the .o filename to use in the build dir
+            derived_ofile = get_derived_o_filename(dirname, de->d_name);
+            fprintf(stderr, "dep: %s\n", derived_ofile);
+
             // handle assembler files specially
             if(!strcmp(get_filename_ext(fullpath), "s")) {
                 fprintf(stderr, "processing file for link: %s\n", fullpath);
-                printf("$(OUT_DIR)/%s.o ", de->d_name);
+                printf("$(OUT_DIR)/%s.o ", derived_ofile);
             }
             // see if the file matches one of the C types
-            else {        
+            else {
                 for(i = 0; i < C_EXT_MAX; i ++) {
                     if(!strcmp(get_filename_ext(fullpath), c_ext[i])) {
                         fprintf(stderr, "processing C file for link: %s\n", fullpath);
-                        printf("$(OUT_DIR)/%s.o ", de->d_name);
+                        printf("$(OUT_DIR)/%s.o ", derived_ofile);
                         break;
                     }
                 }
                 for(i = 0; i < CPP_EXT_MAX; i ++) {
                     if(!strcmp(get_filename_ext(fullpath), cpp_ext[i])) {
                         fprintf(stderr, "processing C++ file for link: %s\n", fullpath);
-                        printf("$(OUT_DIR)/%s.o ", de->d_name);
+                        printf("$(OUT_DIR)/%s.o ", derived_ofile);
                         break;
                     }
                 }
             }
-        }        
+            free(derived_ofile);
+        }
     }
     closedir(dir);
     if(fullpath != NULL) {
@@ -368,6 +381,7 @@ void print_source_targets(char *dirname) {
     struct dirent *de;
     struct stat s;
     char *fullpath = NULL;
+    char *derived_ofile;
     char tempstr[MAX_STRLEN];
     int i;
     int exclude_f;
@@ -384,11 +398,15 @@ void print_source_targets(char *dirname) {
         // get a stat on the path
         if(stat(fullpath, &s) != 0) {
             continue;
-        }        
+        }
         // directory
         if(s.st_mode & S_IFDIR) {
             // ignore . and ..
             if(!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) {
+                continue;
+            }
+            // ignore the build dir
+            if(is_build_dir(de->d_name)) {
                 continue;
             }
             // recurse into directory
@@ -409,15 +427,17 @@ void print_source_targets(char *dirname) {
                 continue;
             }
 
+            // derive the .o filename to use in the build dir
+            derived_ofile = get_derived_o_filename(dirname, de->d_name);
+
             // handle assembler files specially
             if(!strcmp(get_filename_ext(fullpath), "s")) {
                 fprintf(stderr, "processing file for assembly: %s\n", fullpath);
-                printf("# source file: %s\n", fullpath);
+                printf("# ASM source file: %s\n", fullpath);
                 fflush(stdout);
-                printf("$(OUT_DIR)%s%s.o: %s\n", SEPARATOR, de->d_name, fullpath);
+                printf("$(OUT_DIR)%s%s.o: %s\n", SEPARATOR, derived_ofile, fullpath);
                 printf("\t@echo 'assembling %s...'\n", de->d_name);
-                printf("\t$(AS) -o $(OUT_DIR)/%s.o %s\n", 
-                de->d_name, fullpath);
+                printf("\t$(AS) -o $(OUT_DIR)/%s.o %s\n", derived_ofile, fullpath);
                 printf("\t@echo done.\n");
                 printf("\n");
             }
@@ -427,14 +447,14 @@ void print_source_targets(char *dirname) {
                 for(i = 0; i < C_EXT_MAX; i ++) {
                     if(!strcmp(get_filename_ext(fullpath), c_ext[i])) {
                         fprintf(stderr, "processing C file for compile: %s:\n", fullpath);
-                        printf("# source file: %s\n", fullpath);
+                        printf("# C source file: %s\n", fullpath);
                         fflush(stdout);
                         sprintf(tempstr, "%s %s %s -MM -MT '$(OUT_DIR)'/%s.o %s 2>&1",
-                            c_compiler_exec, include_paths, c_compiler_flags, de->d_name, fullpath);
+                            c_compiler_exec, include_paths, c_compiler_flags, derived_ofile, fullpath);
                         system(tempstr);
                         printf("\t@echo 'compiling %s...'\n", de->d_name);
-                        printf("\t$(CC) $(CFLAGS) $(INCLUDES) -o $(OUT_DIR)/%s.o -c %s\n", 
-                            de->d_name, fullpath);
+                        printf("\t$(CC) $(CFLAGS) $(INCLUDES) -o $(OUT_DIR)/%s.o -c %s\n",
+                            derived_ofile, fullpath);
                         printf("\t@echo done.\n");
                         printf("\n");
                         break;
@@ -444,23 +464,24 @@ void print_source_targets(char *dirname) {
                 for(i = 0; i < CPP_EXT_MAX; i ++) {
                     if(!strcmp(get_filename_ext(fullpath), cpp_ext[i])) {
                         fprintf(stderr, "processing C++ file for compile: %s:\n", fullpath);
-                        printf("# source file: %s\n", fullpath);
+                        printf("# C++ source file: %s\n", fullpath);
                         fflush(stdout);
                         sprintf(tempstr, "%s %s %s -MM -MT '$(OUT_DIR)'/%s.o %s 2>&1",
-                            cpp_compiler_exec, include_paths, cpp_compiler_flags, de->d_name, fullpath);
+                            cpp_compiler_exec, include_paths, cpp_compiler_flags, derived_ofile, fullpath);
                         system(tempstr);
                         printf("\t@echo 'compiling %s...'\n", de->d_name);
-                        printf("\t$(CPP) $(CPPFLAGS) $(INCLUDES) -o $(OUT_DIR)/%s.o -c %s\n", 
-                            de->d_name, fullpath);
+                        printf("\t$(CPP) $(CPPFLAGS) $(INCLUDES) -o $(OUT_DIR)/%s.o -c %s\n",
+                            derived_ofile, fullpath);
                         printf("\t@echo done.\n");
                         printf("\n");
                         break;
                     }
                 }
             }
+            free(derived_ofile);
         }
     }
-    
+
     if(fullpath != NULL) {
         free(fullpath);
     }
@@ -472,7 +493,7 @@ void load_excludes(void) {
     fprintf(stderr, "loading excludes:\n");
     char tempstr[MAX_STRLEN];
     char tempstr2[MAX_STRLEN];
-    
+
     fp = fopen(exclude_file, "r");
     if(fp == NULL) {
         fprintf(stderr, "error loading excludes file: %s\n", exclude_file);
@@ -500,7 +521,7 @@ void load_excludes(void) {
         strcpy(excludes[num_excludes], tempstr2);
         num_excludes ++;
     }
-    
+
     fclose(fp);
 }
 
@@ -530,3 +551,73 @@ const char *get_filename_ext(const char *filename) {
     return dot + 1;
 }
 
+// get the derived .o filename from the full path
+// caller must free the returned string
+char *get_derived_o_filename(char *dirname, char *filename) {
+    char *outstr, *p, *pathname;
+    int i, len;
+
+    // get the pathname with no leading . or /
+    pathname = strip_leading_ds(dirname);
+    len = strlen(pathname) + 1 + strlen(filename);
+    outstr = (char *)malloc(sizeof(char) * (len + 1));
+    if(strlen(pathname) > 0) {
+        strncpy(outstr, pathname, strlen(pathname) + 1);
+        strncat(outstr, SEPARATOR, strlen(SEPARATOR) + 1);
+        strncat(outstr, filename, len);
+    }
+    else {
+        strncpy(outstr, filename, len);
+    }
+
+    len = strlen(outstr);
+    p = outstr;
+    for(i = 0; i < len; i ++) {
+        if(*p == SEPARATOR[0]) {
+            *p = '_';
+        }
+        p++;
+    }
+    free(pathname);
+    return outstr;
+}
+
+// check if the directory is the build dir - ignores leading . and /
+int is_build_dir(char *dirname) {
+    char *p = dirname;
+    int len = strlen(dirname);
+    if(len > 2 && *p == '.' && *(p+1) == SEPARATOR[0]) {
+        p += 2;
+    }
+    if(!strcmp(p, build_dir)) {
+        return 1;
+    }
+    return 0;
+}
+
+// strip the leading '.' and possibly also '/'
+// caller must free returned string
+char *strip_leading_ds(char *filename) {
+    char *p, *outstr;
+    int len;
+
+    p = filename;
+    len = strlen(filename);
+    if(len > 0 && *p == '.') {
+        p ++;
+        len --;
+        if(len > 0 && *p == SEPARATOR[0]) {
+            p ++;
+            len --;
+        }
+    }
+
+    outstr = (char *)malloc(sizeof(char) * (len + 1));
+    if(len == 0) {
+        outstr[0] = 0x00;
+    }
+    else {
+        strncpy(outstr, p, len + 1);
+    }
+    return outstr;
+}
