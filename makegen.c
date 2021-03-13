@@ -449,7 +449,7 @@ void print_source_targets(char *dirname) {
                         fprintf(stderr, "processing C file for compile: %s:\n", fullpath);
                         printf("# C source file: %s\n", fullpath);
                         fflush(stdout);
-                        sprintf(tempstr, "%s %s %s -MM -MT '$(OUT_DIR)'/%s.o %s 2>&1",
+                        sprintf(tempstr, "%s %s %s -MM -MT '$(OUT_DIR)'/%s.o %s",
                             c_compiler_exec, include_paths, c_compiler_flags, derived_ofile, fullpath);
                         system(tempstr);
                         printf("\t@echo 'compiling %s...'\n", de->d_name);
@@ -466,7 +466,7 @@ void print_source_targets(char *dirname) {
                         fprintf(stderr, "processing C++ file for compile: %s:\n", fullpath);
                         printf("# C++ source file: %s\n", fullpath);
                         fflush(stdout);
-                        sprintf(tempstr, "%s %s %s -MM -MT '$(OUT_DIR)'/%s.o %s 2>&1",
+                        sprintf(tempstr, "%s %s %s -MM -MT '$(OUT_DIR)'/%s.o %s",
                             cpp_compiler_exec, include_paths, cpp_compiler_flags, derived_ofile, fullpath);
                         system(tempstr);
                         printf("\t@echo 'compiling %s...'\n", de->d_name);
